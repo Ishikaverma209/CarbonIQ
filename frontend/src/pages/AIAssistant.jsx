@@ -31,7 +31,8 @@ const AIAssistant = () => {
     setLoading(true);
 
     try {
-      const res = await axios.post('/api/ai/chat', { message });
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await axios.post(`${apiUrl}/api/ai/chat`, { message });
       setMessages((prev) => [...prev, { role: 'ai', text: res.data.reply }]);
     } catch (error) {
       console.error('AI API error:', error);
