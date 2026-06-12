@@ -32,6 +32,7 @@ const Navbar = () => {
   const navLinks = user ? [
     { to: '/dashboard', label: 'Dashboard' },
     { to: '/calculator', label: 'Calculator' },
+    { to: '/goals', label: 'Goals' },
     { to: '/challenges', label: 'Challenges' },
     { to: '/assistant', label: 'AI Helper' },
   ] : [];

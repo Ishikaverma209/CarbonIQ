@@ -7,6 +7,7 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Calculator from './pages/Calculator';
 import Challenges from './pages/Challenges';
+import GoalPlanner from './pages/GoalPlanner';
 import AIAssistant from './pages/AIAssistant';
 
 const PrivateRoute = ({ children }) => {
@@ -52,6 +53,7 @@ function App() {
             <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
             <Route path="/calculator" element={<PrivateRoute><Calculator /></PrivateRoute>} />
             <Route path="/challenges" element={<PrivateRoute><Challenges /></PrivateRoute>} />
+            <Route path="/goals" element={<PrivateRoute><GoalPlanner /></PrivateRoute>} />
             <Route path="/assistant" element={<PrivateRoute><AIAssistant /></PrivateRoute>} />
           </Routes>
         </div>
