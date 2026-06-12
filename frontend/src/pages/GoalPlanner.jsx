@@ -365,7 +365,7 @@ const GoalPlanner = () => {
                         onClick={() => updateProgress(goal.id)}
                         disabled={goal.completed}
                         style={{
-                          padding: '6px 12px', borderRadius: '6px', border: 'none',
+                          padding: '6px 12px', borderRadius: '6px',
                           background: goal.completed ? 'var(--bg-tertiary)' : `${color}15`,
                           color: goal.completed ? 'var(--text-muted)' : color,
                           fontSize: '12px', fontWeight: '600', cursor: goal.completed ? 'default' : 'pointer',

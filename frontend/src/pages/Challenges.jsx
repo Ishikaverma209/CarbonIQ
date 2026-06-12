@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { motion } from 'framer-motion';
+import { FiTarget, FiCheck, FiAward, FiTrendingUp } from 'react-icons/fi';
 
 const LEVELS = [
   { name: 'Green Beginner', icon: '🌱', minPoints: 0, color: '#14B8A6' },
@@ -10,179 +10,335 @@ const LEVELS = [
 ];
 
 const CHALLENGES = [
-  { id: 'meatless-week', title: 'Meatless Week', desc: 'Go vegetarian for 7 days', co2: 50, days: 7, icon: '🥗' },
-  { id: 'bike-to-work', title: 'Bike to Work', desc: 'Cycle instead of driving for 5 days', co2: 30, days: 5, icon: '🚲' },
-  { id: 'energy-saver', title: 'Energy Saver', desc: 'Reduce electricity by 20% for a week', co2: 20, days: 7, icon: '💡' },
-  { id: 'public-transit', title: 'Public Transit', desc: 'Use public transport for 5 days', co2: 40, days: 5, icon: '🚌' },
-  { id: 'zero-waste', title: 'Zero Waste Day', desc: 'No landfill waste for one day', co2: 5, days: 1, icon: '♻️' },
-  { id: 'cold-wash', title: 'Cold Wash', desc: 'Wash clothes in cold water for a week', co2: 10, days: 7, icon: '冷水' },
+  { id: 'meatless-week', title: 'Meatless Week', desc: 'Go vegetarian for 7 days', co2: 50, days: 7, icon: '🥗', category: 'food' },
+  { id: 'bike-to-work', title: 'Bike to Work', desc: 'Cycle instead of driving for 5 days', co2: 30, days: 5, icon: '🚲', category: 'transport' },
+  { id: 'energy-saver', title: 'Energy Saver', desc: 'Reduce electricity by 20% for a week', co2: 20, days: 7, icon: '💡', category: 'energy' },
+  { id: 'public-transit', title: 'Public Transit', desc: 'Use public transport for 5 days', co2: 40, days: 5, icon: '🚌', category: 'transport' },
+  { id: 'zero-waste', title: 'Zero Waste Day', desc: 'No landfill waste for one day', co2: 5, days: 1, icon: '♻️', category: 'waste' },
+  { id: 'cold-wash', title: 'Cold Wash', desc: 'Wash clothes in cold water for a week', co2: 10, days: 7, icon: '🧊', category: 'energy' },
 ];
 
 const Challenges = () => {
   const { user } = useAuth();
-  const [challenges, setChallenges] = useState([]);
-  const [userChallenges, setUserChallenges] = useState([]);
   const [tab, setTab] = useState('challenges');
+  const [enrolledIds, setEnrolledIds] = useState([]);
+  const [completedIds, setCompletedIds] = useState([]);
   const [goals, setGoals] = useState([]);
-  const [newGoal, setNewGoal] = useState({ title: '', target: '' });
-  const [loading, setLoading] = useState(true);
+  const [newGoalTitle, setNewGoalTitle] = useState('');
+  const [newGoalTarget, setNewGoalTarget] = useState('');
 
-  const userLevel = LEVELS.findIndex(l => (user?.points || 0) >= l.minPoints);
+  const STORAGE_KEY_ENROLLED = `carboniq_enrolled_${user?.id}`;
+  const STORAGE_KEY_COMPLETED = `carboniq_completed_${user?.id}`;
+  const STORAGE_KEY_GOALS = `carboniq_goals_v2_${user?.id}`;
+  const STORAGE_KEY_POINTS = `carboniq_points_${user?.id}`;
+
+  useEffect(() => {
+    setEnrolledIds(JSON.parse(localStorage.getItem(STORAGE_KEY_ENROLLED) || '[]'));
+    setCompletedIds(JSON.parse(localStorage.getItem(STORAGE_KEY_COMPLETED) || '[]'));
+    setGoals(JSON.parse(localStorage.getItem(STORAGE_KEY_GOALS) || '[]'));
+  }, [user?.id]);
+
+  const points = parseInt(localStorage.getItem(STORAGE_KEY_POINTS) || '0');
+  const userLevel = LEVELS.findIndex(l => points >= l.minPoints);
   const currentLevel = LEVELS[Math.max(0, userLevel)];
   const nextLevel = LEVELS[Math.min(userLevel + 1, LEVELS.length - 1)];
-  const points = user?.points || 0;
   const progress = userLevel < LEVELS.length - 1
     ? ((points - currentLevel.minPoints) / (nextLevel.minPoints - currentLevel.minPoints)) * 100
     : 100;
 
-  useEffect(() => {
-    Promise.all([
-      axios.get('/api/gamification/challenges').catch(() => ({ data: CHALLENGES.map(c => ({ ...c, progress: 0, completed: false, enrolled: false })) })),
-      axios.get('/api/gamification/goals').catch(() => ({ data: [] })),
-    ]).then(([chRes, gRes]) => {
-      setChallenges(chRes.data);
-      setGoals(gRes.data);
-    }).finally(() => setLoading(false));
-  }, []);
+  const save = (key, val) => localStorage.setItem(key, JSON.stringify(val));
 
-  const enroll = async (id) => {
-    await axios.post(`/api/gamification/challenges/${id}/enroll`).catch(() => {});
-    setChallenges(prev => prev.map(c => c.id === id ? { ...c, enrolled: true } : c));
+  const enroll = (id) => {
+    const updated = [...enrolledIds, id];
+    setEnrolledIds(updated);
+    save(STORAGE_KEY_ENROLLED, updated);
   };
 
-  const addGoal = async (e) => {
+  const completeChallenge = (id) => {
+    if (completedIds.includes(id)) return;
+    const updated = [...completedIds, id];
+    setCompletedIds(updated);
+    save(STORAGE_KEY_COMPLETED, updated);
+    const challenge = CHALLENGES.find(c => c.id === id);
+    const newPoints = points + (challenge?.co2 || 10);
+    localStorage.setItem(STORAGE_KEY_POINTS, newPoints.toString());
+  };
+
+  const addGoal = (e) => {
     e.preventDefault();
-    if (!newGoal.title || !newGoal.target) return;
-    const res = await axios.post('/api/gamification/goals', newGoal).catch(() => null);
-    if (res) { setGoals(prev => [...prev, res.data]); setNewGoal({ title: '', target: '' }); }
+    if (!newGoalTitle.trim() || !newGoalTarget) return;
+    const goal = {
+      id: Date.now().toString(),
+      title: newGoalTitle,
+      target: parseInt(newGoalTarget),
+      current: 0,
+      createdAt: new Date().toISOString(),
+    };
+    const updated = [...goals, goal];
+    setGoals(updated);
+    save(STORAGE_KEY_GOALS, updated);
+    setNewGoalTitle('');
+    setNewGoalTarget('');
   };
 
-  if (loading) return (
-    <div className="page" style={{ textAlign: 'center', paddingTop: '200px', color: '#737373' }}>
-      Loading...
-    </div>
-  );
+  const updateGoal = (id) => {
+    const updated = goals.map(g => g.id === id ? { ...g, current: Math.min(g.current + 1, g.target) } : g);
+    setGoals(updated);
+    save(STORAGE_KEY_GOALS, updated);
+  };
+
+  const deleteGoal = (id) => {
+    const updated = goals.filter(g => g.id !== id);
+    setGoals(updated);
+    save(STORAGE_KEY_GOALS, updated);
+  };
 
   return (
-    <div className="page">
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-      >
-        <h1 style={{ fontSize: '28px', fontWeight: '700', marginBottom: '4px', color: '#E5E5E5' }}>Challenges & Goals</h1>
-        <p style={{ fontSize: '15px', color: '#737373', marginBottom: '24px' }}>Complete challenges, set goals, and level up.</p>
+    <div className="page" style={{ maxWidth: '900px', margin: '0 auto', padding: '40px 32px', paddingTop: '100px', minHeight: '100vh' }}>
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+        <h1 style={{ fontSize: '28px', fontWeight: '600', marginBottom: '4px', color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>Challenges</h1>
+        <p style={{ fontSize: '14px', color: 'var(--text-tertiary)', marginBottom: '28px' }}>Complete challenges, earn points, level up.</p>
 
         {/* Level Card */}
-        <div className="card" style={{ 
-          background: 'rgba(20, 184, 166, 0.05)', 
-          border: '1px solid rgba(20, 184, 166, 0.12)',
-          marginBottom: '24px',
+        <div style={{
+          padding: '24px', borderRadius: '12px',
+          background: 'rgba(20, 184, 166, 0.04)', border: '1px solid rgba(20, 184, 166, 0.12)',
+          marginBottom: '28px',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
             <div style={{ fontSize: '36px' }}>{currentLevel.icon}</div>
-            <div>
-              <div style={{ fontSize: '18px', fontWeight: '600', color: '#E5E5E5' }}>{currentLevel.name}</div>
-              <div style={{ fontSize: '13px', color: '#737373' }}>{points} points</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '18px', fontWeight: '600', color: 'var(--text-primary)' }}>{currentLevel.name}</div>
+              <div style={{ fontSize: '13px', color: 'var(--text-tertiary)' }}>{points} points</div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                <FiAward size={14} color="var(--accent)" />
+                <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                  {completedIds.length}/{CHALLENGES.length} completed
+                </span>
+              </div>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                {enrolledIds.length} active
+              </div>
             </div>
           </div>
           {userLevel < LEVELS.length - 1 && (
             <>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#737373', marginBottom: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>
                 <span>{currentLevel.name}</span>
                 <span>{nextLevel.name}</span>
               </div>
-              <div className="progress-bar">
-                <div className="progress-bar-fill" style={{ width: `${Math.min(progress, 100)}%` }} />
+              <div style={{ height: '6px', borderRadius: '3px', background: 'var(--bg-tertiary)', overflow: 'hidden' }}>
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${Math.min(progress, 100)}%` }}
+                  transition={{ duration: 0.6 }}
+                  style={{ height: '100%', borderRadius: '3px', background: 'linear-gradient(90deg, #14B8A6, #2DD4BF)' }}
+                />
               </div>
-              <div style={{ fontSize: '12px', color: '#737373', marginTop: '6px' }}>{Math.round(100 - progress)}% to next level</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px' }}>
+                {Math.round(100 - progress)}% to {nextLevel.name}
+              </div>
             </>
           )}
         </div>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
-          {['challenges', 'goals'].map(t => (
-            <button 
-              key={t} 
-              onClick={() => setTab(t)} 
-              className={`btn btn-sm`}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
+          {[
+            { id: 'challenges', label: 'Challenges', icon: '🏆' },
+            { id: 'goals', label: 'Goals', icon: '🎯' },
+          ].map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
               style={{
-                background: tab === t ? 'rgba(20, 184, 166, 0.1)' : 'transparent',
-                border: tab === t ? '1px solid rgba(20, 184, 166, 0.3)' : '1px solid rgba(255, 255, 255, 0.06)',
-                color: tab === t ? '#14B8A6' : '#A3A3A3',
+                padding: '8px 16px', borderRadius: '8px',
+                background: tab === t.id ? 'rgba(20, 184, 166, 0.1)' : 'transparent',
+                border: `1px solid ${tab === t.id ? 'rgba(20, 184, 166, 0.3)' : 'var(--border-default)'}`,
+                color: tab === t.id ? 'var(--accent)' : 'var(--text-secondary)',
+                fontSize: '13px', fontWeight: '500', cursor: 'pointer',
               }}
             >
-              {t === 'challenges' ? '🏆 Challenges' : '🎯 Goals'}
+              {t.icon} {t.label}
             </button>
           ))}
         </div>
 
         {/* Challenges */}
         {tab === 'challenges' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
-            {challenges.map((c) => (
-              <div key={c.id} className="card">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                  <div style={{ fontSize: '28px' }}>{c.icon}</div>
-                  <div>
-                    <div style={{ fontSize: '15px', fontWeight: '600', color: '#E5E5E5' }}>{c.title}</div>
-                    <div style={{ fontSize: '12px', color: '#737373' }}>{c.desc}</div>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: '12px', fontSize: '12px', color: '#737373', marginBottom: '12px' }}>
-                  <span>♻️ {c.co2} kg CO₂</span>
-                  <span>📅 {c.days} days</span>
-                </div>
-                {c.enrolled ? (
-                  <div>
-                    <div className="progress-bar">
-                      <div className="progress-bar-fill" style={{ width: `${c.progress || 0}%` }} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px' }}>
+            {CHALLENGES.map((c) => {
+              const isEnrolled = enrolledIds.includes(c.id);
+              const isCompleted = completedIds.includes(c.id);
+              return (
+                <motion.div
+                  key={c.id}
+                  whileHover={{ y: -2 }}
+                  style={{
+                    padding: '20px', borderRadius: '12px',
+                    background: 'var(--bg-secondary)', border: '1px solid var(--border-default)',
+                    opacity: isCompleted ? 0.6 : 1,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                    <div style={{
+                      width: '44px', height: '44px', borderRadius: '10px',
+                      background: isCompleted ? 'rgba(20, 184, 166, 0.1)' : 'var(--bg-tertiary)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '22px',
+                    }}>
+                      {isCompleted ? <FiCheck size={18} color="#14B8A6" /> : c.icon}
                     </div>
-                    <div style={{ fontSize: '12px', color: '#737373', marginTop: '6px' }}>{c.progress || 0}% complete</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)', textDecoration: isCompleted ? 'line-through' : 'none' }}>
+                        {c.title}
+                      </div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{c.desc}</div>
+                    </div>
                   </div>
-                ) : (
-                  <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={() => enroll(c.id)}>Join Challenge</button>
-                )}
-              </div>
-            ))}
+                  <div style={{ display: 'flex', gap: '12px', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '14px' }}>
+                    <span>♻️ {c.co2} kg CO₂</span>
+                    <span>📅 {c.days} days</span>
+                  </div>
+                  {isCompleted ? (
+                    <div style={{
+                      padding: '8px', borderRadius: '8px', textAlign: 'center',
+                      background: 'rgba(20, 184, 166, 0.06)', border: '1px solid rgba(20, 184, 166, 0.15)',
+                      fontSize: '12px', fontWeight: '600', color: '#14B8A6',
+                    }}>
+                      Completed · +{c.co2} pts
+                    </div>
+                  ) : isEnrolled ? (
+                    <button
+                      onClick={() => completeChallenge(c.id)}
+                      style={{
+                        width: '100%', padding: '10px', borderRadius: '8px', border: 'none',
+                        background: 'rgba(20, 184, 166, 0.1)', color: '#14B8A6',
+                        fontSize: '13px', fontWeight: '600', cursor: 'pointer',
+                      }}
+                    >
+                      Mark Complete
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => enroll(c.id)}
+                      style={{
+                        width: '100%', padding: '10px', borderRadius: '8px', border: 'none',
+                        background: 'var(--accent)', color: 'white',
+                        fontSize: '13px', fontWeight: '600', cursor: 'pointer',
+                      }}
+                    >
+                      Join Challenge
+                    </button>
+                  )}
+                </motion.div>
+              );
+            })}
           </div>
         )}
 
         {/* Goals */}
         {tab === 'goals' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
-            <div className="card">
-              <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: '#E5E5E5' }}>Your Goals</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '14px' }}>
+            <div style={{
+              padding: '20px', borderRadius: '12px',
+              background: 'var(--bg-secondary)', border: '1px solid var(--border-default)',
+            }}>
+              <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '16px', color: 'var(--text-primary)' }}>Your Goals</h3>
               {goals.length === 0 ? (
-                <p style={{ textAlign: 'center', color: '#525252', padding: '24px 0', fontSize: '14px' }}>No goals yet.</p>
+                <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px 0', fontSize: '13px' }}>
+                  No goals yet. Create one below.
+                </p>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {goals.map((g) => (
-                    <div key={g._id} style={{ 
-                      padding: '14px', 
-                      background: 'rgba(255, 255, 255, 0.02)', 
-                      borderRadius: '10px',
-                      border: '1px solid rgba(255, 255, 255, 0.04)',
-                    }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', fontWeight: '500', marginBottom: '10px', color: '#E5E5E5' }}>
-                        <span>{g.title}</span>
-                        <span style={{ color: '#14B8A6' }}>{g.current}/{g.target}</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {goals.map((g) => {
+                    const pct = g.target > 0 ? Math.min((g.current / g.target) * 100, 100) : 0;
+                    const done = g.current >= g.target;
+                    return (
+                      <div key={g.id} style={{
+                        padding: '14px', borderRadius: '10px',
+                        background: done ? 'rgba(20, 184, 166, 0.04)' : 'var(--bg-tertiary)',
+                        border: `1px solid ${done ? 'rgba(20, 184, 166, 0.15)' : 'var(--border-subtle)'}`,
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: '500', marginBottom: '10px', color: 'var(--text-primary)' }}>
+                          <span style={{ textDecoration: done ? 'line-through' : 'none' }}>{g.title}</span>
+                          <span style={{ color: done ? '#14B8A6' : 'var(--accent)' }}>{g.current}/{g.target}</span>
+                        </div>
+                        <div style={{ height: '4px', borderRadius: '2px', background: 'var(--bg-primary)', overflow: 'hidden', marginBottom: '8px' }}>
+                          <div style={{ width: `${pct}%`, height: '100%', borderRadius: '2px', background: done ? '#14B8A6' : 'var(--accent)', transition: 'width 0.3s' }} />
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          {!done && (
+                            <button
+                              onClick={() => updateGoal(g.id)}
+                          style={{
+                            padding: '4px 10px', borderRadius: '4px', border: 'none',
+                            background: 'rgba(20, 184, 166, 0.1)', color: '#14B8A6',
+                            fontSize: '11px', fontWeight: '600', cursor: 'pointer',
+                          }}
+                            >
+                              +1
+                            </button>
+                          )}
+                          <button
+                            onClick={() => deleteGoal(g.id)}
+                            style={{
+                              padding: '4px 8px', borderRadius: '4px', border: 'none',
+                              background: 'transparent', color: 'var(--text-muted)',
+                              fontSize: '11px', cursor: 'pointer',
+                            }}
+                          >
+                            Remove
+                          </button>
+                        </div>
                       </div>
-                      <div className="progress-bar">
-                        <div className="progress-bar-fill" style={{ width: `${Math.min((g.current / g.target) * 100, 100)}%` }} />
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
-            <div className="card">
-              <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: '#E5E5E5' }}>New Goal</h3>
+            <div style={{
+              padding: '20px', borderRadius: '12px',
+              background: 'var(--bg-secondary)', border: '1px solid var(--border-default)',
+            }}>
+              <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '16px', color: 'var(--text-primary)' }}>New Goal</h3>
               <form onSubmit={addGoal}>
-                <input className="input" placeholder="Goal name" value={newGoal.title} onChange={e => setNewGoal({...newGoal, title: e.target.value})} required style={{ marginBottom: '12px' }} />
-                <input className="input" type="number" min="1" placeholder="Target (kg CO₂)" value={newGoal.target} onChange={e => setNewGoal({...newGoal, target: e.target.value})} required style={{ marginBottom: '16px' }} />
-                <button className="btn btn-primary" type="submit" style={{ width: '100%' }}>Create Goal</button>
+                <input
+                  placeholder="Goal name"
+                  value={newGoalTitle}
+                  onChange={e => setNewGoalTitle(e.target.value)}
+                  required
+                  style={{
+                    width: '100%', padding: '10px 14px', borderRadius: '8px',
+                    border: '1px solid var(--border-default)', background: 'var(--bg-tertiary)',
+                    fontSize: '14px', color: 'var(--text-primary)', outline: 'none', marginBottom: '10px', boxSizing: 'border-box',
+                  }}
+                />
+                <input
+                  type="number"
+                  min="1"
+                  placeholder="Target"
+                  value={newGoalTarget}
+                  onChange={e => setNewGoalTarget(e.target.value)}
+                  required
+                  style={{
+                    width: '100%', padding: '10px 14px', borderRadius: '8px',
+                    border: '1px solid var(--border-default)', background: 'var(--bg-tertiary)',
+                    fontSize: '14px', color: 'var(--text-primary)', outline: 'none', marginBottom: '14px', boxSizing: 'border-box',
+                  }}
+                />
+                <button
+                  type="submit"
+                  style={{
+                    width: '100%', padding: '10px', borderRadius: '8px', border: 'none',
+                    background: 'var(--accent)', color: 'white',
+                    fontSize: '13px', fontWeight: '600', cursor: 'pointer',
+                  }}
+                >
+                  Create Goal
+                </button>
               </form>
             </div>
           </div>
