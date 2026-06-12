@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiSend, FiCpu, FiUser, FiTrendingDown, FiZap, FiTarget } from 'react-icons/fi';
 import { Link } from 'react-router-dom';
-import { FootprintIcon } from '../components/FootprintTrail';
+import { isBackendAvailable } from '../lib/api';
+
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 const QUICK_TOPICS = [
   { id: 'transport', label: 'Transport', icon: '🚗' },
@@ -222,7 +224,26 @@ const AIAssistant = () => {
     setInput('');
     setLoading(true);
 
-    // Simulate AI thinking delay
+    // Try backend first (Gemini AI), fall back to client-side
+    if (API_URL) {
+      try {
+        const res = await fetch(`${API_URL}/api/ai/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setMessages((prev) => [...prev, { role: 'ai', text: data.reply, source: data.source }]);
+          setLoading(false);
+          return;
+        }
+      } catch (err) {
+        // Backend unavailable, use client-side fallback
+      }
+    }
+
+    // Client-side fallback
     setTimeout(() => {
       const response = getAIResponse(message);
       setMessages((prev) => [...prev, { role: 'ai', text: response.text, tips: response.tips }]);

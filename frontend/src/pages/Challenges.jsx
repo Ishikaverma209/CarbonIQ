@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { motion } from 'framer-motion';
-import { FiTarget, FiCheck, FiAward, FiTrendingUp } from 'react-icons/fi';
+import { FiAward, FiCheck } from 'react-icons/fi';
+import { apiGet, apiPost, apiPut, isBackendAvailable } from '../lib/api';
 
 const LEVELS = [
-  { name: 'Green Beginner', icon: '🌱', minPoints: 0, color: '#14B8A6' },
-  { name: 'Eco Explorer', icon: '🌿', minPoints: 500, color: '#0D9488' },
-  { name: 'Climate Hero', icon: '🌍', minPoints: 2000, color: '#0F766E' },
+  { name: 'Green Beginner', icon: '🌱', minPoints: 0 },
+  { name: 'Eco Explorer', icon: '🌿', minPoints: 500 },
+  { name: 'Climate Hero', icon: '🌍', minPoints: 2000 },
 ];
 
-const CHALLENGES = [
+const FALLBACK_CHALLENGES = [
   { id: 'meatless-week', title: 'Meatless Week', desc: 'Go vegetarian for 7 days', co2: 50, days: 7, icon: '🥗', category: 'food' },
   { id: 'bike-to-work', title: 'Bike to Work', desc: 'Cycle instead of driving for 5 days', co2: 30, days: 5, icon: '🚲', category: 'transport' },
   { id: 'energy-saver', title: 'Energy Saver', desc: 'Reduce electricity by 20% for a week', co2: 20, days: 7, icon: '💡', category: 'energy' },
@@ -21,22 +22,16 @@ const CHALLENGES = [
 const Challenges = () => {
   const { user } = useAuth();
   const [tab, setTab] = useState('challenges');
-  const [enrolledIds, setEnrolledIds] = useState([]);
-  const [completedIds, setCompletedIds] = useState([]);
+  const [challenges, setChallenges] = useState([]);
   const [goals, setGoals] = useState([]);
   const [newGoalTitle, setNewGoalTitle] = useState('');
   const [newGoalTarget, setNewGoalTarget] = useState('');
+  const [loading, setLoading] = useState(true);
 
   const STORAGE_KEY_ENROLLED = `carboniq_enrolled_${user?.id}`;
   const STORAGE_KEY_COMPLETED = `carboniq_completed_${user?.id}`;
   const STORAGE_KEY_GOALS = `carboniq_goals_v2_${user?.id}`;
   const STORAGE_KEY_POINTS = `carboniq_points_${user?.id}`;
-
-  useEffect(() => {
-    setEnrolledIds(JSON.parse(localStorage.getItem(STORAGE_KEY_ENROLLED) || '[]'));
-    setCompletedIds(JSON.parse(localStorage.getItem(STORAGE_KEY_COMPLETED) || '[]'));
-    setGoals(JSON.parse(localStorage.getItem(STORAGE_KEY_GOALS) || '[]'));
-  }, [user?.id]);
 
   const points = parseInt(localStorage.getItem(STORAGE_KEY_POINTS) || '0');
   const userLevel = LEVELS.findIndex(l => points >= l.minPoints);
@@ -46,29 +41,97 @@ const Challenges = () => {
     ? ((points - currentLevel.minPoints) / (nextLevel.minPoints - currentLevel.minPoints)) * 100
     : 100;
 
-  const save = (key, val) => localStorage.setItem(key, JSON.stringify(val));
+  useEffect(() => {
+    loadData();
+  }, [user?.id]);
 
-  const enroll = (id) => {
-    const updated = [...enrolledIds, id];
-    setEnrolledIds(updated);
-    save(STORAGE_KEY_ENROLLED, updated);
+  const loadData = async () => {
+    setLoading(true);
+    const backendUp = isBackendAvailable();
+
+    if (backendUp && user?.id) {
+      try {
+        const [chRes, gRes] = await Promise.all([
+          apiGet('/api/gamification/challenges', user),
+          apiGet('/api/gamification/goals', user),
+        ]);
+        if (chRes) setChallenges(chRes);
+        if (gRes) setGoals(gRes);
+      } catch {
+        loadLocal();
+      }
+    } else {
+      loadLocal();
+    }
+    setLoading(false);
   };
 
-  const completeChallenge = (id) => {
-    if (completedIds.includes(id)) return;
-    const updated = [...completedIds, id];
-    setCompletedIds(updated);
-    save(STORAGE_KEY_COMPLETED, updated);
-    const challenge = CHALLENGES.find(c => c.id === id);
+  const loadLocal = () => {
+    const enrolled = JSON.parse(localStorage.getItem(STORAGE_KEY_ENROLLED) || '[]');
+    const completed = JSON.parse(localStorage.getItem(STORAGE_KEY_COMPLETED) || '[]');
+    const localGoals = JSON.parse(localStorage.getItem(STORAGE_KEY_GOALS) || '[]');
+
+    const chWithState = FALLBACK_CHALLENGES.map(c => ({
+      ...c,
+      co2: c.co2,
+      enrolled: enrolled.includes(c.id),
+      completed: completed.includes(c.id),
+      progress: completed.includes(c.id) ? 100 : enrolled.includes(c.id) ? 50 : 0,
+    }));
+    setChallenges(chWithState);
+    setGoals(localGoals);
+  };
+
+  const saveLocal = (key, val) => localStorage.setItem(key, JSON.stringify(val));
+
+  const enroll = async (id) => {
+    if (isBackendAvailable() && user?.id) {
+      try {
+        await apiPost(`/api/gamification/challenges/${id}/enroll`, {}, user);
+        loadData();
+        return;
+      } catch { /* fall through to local */ }
+    }
+    const enrolled = JSON.parse(localStorage.getItem(STORAGE_KEY_ENROLLED) || '[]');
+    const updated = [...enrolled, id];
+    saveLocal(STORAGE_KEY_ENROLLED, updated);
+    setChallenges(prev => prev.map(c => c.id === id ? { ...c, enrolled: true } : c));
+  };
+
+  const completeChallenge = async (id) => {
+    const challenge = (challenges.length ? challenges : FALLBACK_CHALLENGES).find(c => c.id === id);
     const newPoints = points + (challenge?.co2 || 10);
     localStorage.setItem(STORAGE_KEY_POINTS, newPoints.toString());
+
+    if (isBackendAvailable() && user?.id) {
+      try {
+        await apiPost(`/api/gamification/challenges/${id}/progress`, { progress: 100 }, user);
+        loadData();
+        return;
+      } catch { /* fall through to local */ }
+    }
+    const completed = JSON.parse(localStorage.getItem(STORAGE_KEY_COMPLETED) || '[]');
+    saveLocal(STORAGE_KEY_COMPLETED, [...completed, id]);
+    setChallenges(prev => prev.map(c => c.id === id ? { ...c, completed: true, progress: 100 } : c));
   };
 
-  const addGoal = (e) => {
+  const addGoal = async (e) => {
     e.preventDefault();
     if (!newGoalTitle.trim() || !newGoalTarget) return;
+
+    if (isBackendAvailable() && user?.id) {
+      try {
+        await apiPost('/api/gamification/goals', { title: newGoalTitle, target: parseInt(newGoalTarget) }, user);
+        loadData();
+        setNewGoalTitle('');
+        setNewGoalTarget('');
+        return;
+      } catch { /* fall through to local */ }
+    }
+
     const goal = {
       id: Date.now().toString(),
+      _id: Date.now().toString(),
       title: newGoalTitle,
       target: parseInt(newGoalTarget),
       current: 0,
@@ -76,22 +139,49 @@ const Challenges = () => {
     };
     const updated = [...goals, goal];
     setGoals(updated);
-    save(STORAGE_KEY_GOALS, updated);
+    saveLocal(STORAGE_KEY_GOALS, updated);
     setNewGoalTitle('');
     setNewGoalTarget('');
   };
 
-  const updateGoal = (id) => {
-    const updated = goals.map(g => g.id === id ? { ...g, current: Math.min(g.current + 1, g.target) } : g);
+  const updateGoalProgress = async (id) => {
+    if (isBackendAvailable() && user?.id) {
+      try {
+        const goal = goals.find(g => (g._id || g.id) === id);
+        if (goal) {
+          await apiPut(`/api/gamification/goals/${goal._id || goal.id}`, { current: Math.min((goal.current || 0) + 1, goal.target) }, user);
+          loadData();
+          return;
+        }
+      } catch { /* fall through to local */ }
+    }
+    const updated = goals.map(g => {
+      if ((g._id || g.id) === id) {
+        const newCurrent = Math.min((g.current || 0) + 1, g.target);
+        return { ...g, current: newCurrent, completed: newCurrent >= g.target };
+      }
+      return g;
+    });
     setGoals(updated);
-    save(STORAGE_KEY_GOALS, updated);
+    saveLocal(STORAGE_KEY_GOALS, updated);
   };
 
-  const deleteGoal = (id) => {
-    const updated = goals.filter(g => g.id !== id);
+  const deleteGoal = async (id) => {
+    if (isBackendAvailable() && user?.id) {
+      try {
+        await apiPut(`/api/gamification/goals/${id}`, { delete: true }, user);
+        loadData();
+        return;
+      } catch { /* fall through to local */ }
+    }
+    const updated = goals.filter(g => (g._id || g.id) !== id);
     setGoals(updated);
-    save(STORAGE_KEY_GOALS, updated);
+    saveLocal(STORAGE_KEY_GOALS, updated);
   };
+
+  if (loading) return (
+    <div style={{ textAlign: 'center', paddingTop: '200px', color: 'var(--text-muted)', fontSize: '14px' }}>Loading...</div>
+  );
 
   return (
     <div className="page" style={{ maxWidth: '900px', margin: '0 auto', padding: '40px 32px', paddingTop: '100px', minHeight: '100vh' }}>
@@ -115,11 +205,11 @@ const Challenges = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
                 <FiAward size={14} color="var(--accent)" />
                 <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                  {completedIds.length}/{CHALLENGES.length} completed
+                  {challenges.filter(c => c.completed).length}/{challenges.length || FALLBACK_CHALLENGES.length} completed
                 </span>
               </div>
               <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                {enrolledIds.length} active
+                {challenges.filter(c => c.enrolled).length} active
               </div>
             </div>
           </div>
@@ -169,9 +259,9 @@ const Challenges = () => {
         {/* Challenges */}
         {tab === 'challenges' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px' }}>
-            {CHALLENGES.map((c) => {
-              const isEnrolled = enrolledIds.includes(c.id);
-              const isCompleted = completedIds.includes(c.id);
+            {challenges.map((c) => {
+              const isCompleted = c.completed;
+              const isEnrolled = c.enrolled;
               return (
                 <motion.div
                   key={c.id}
@@ -195,12 +285,12 @@ const Challenges = () => {
                       <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)', textDecoration: isCompleted ? 'line-through' : 'none' }}>
                         {c.title}
                       </div>
-                      <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{c.desc}</div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{c.desc || c.description}</div>
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '12px', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '14px' }}>
-                    <span>♻️ {c.co2} kg CO₂</span>
-                    <span>📅 {c.days} days</span>
+                    <span>♻️ {c.co2 || c.carbonReduction} kg CO₂</span>
+                    <span>📅 {c.days || c.duration} days</span>
                   </div>
                   {isCompleted ? (
                     <div style={{
@@ -208,7 +298,7 @@ const Challenges = () => {
                       background: 'rgba(20, 184, 166, 0.06)', border: '1px solid rgba(20, 184, 166, 0.15)',
                       fontSize: '12px', fontWeight: '600', color: '#14B8A6',
                     }}>
-                      Completed · +{c.co2} pts
+                      Completed · +{c.co2 || c.carbonReduction} pts
                     </div>
                   ) : isEnrolled ? (
                     <button
@@ -254,17 +344,18 @@ const Challenges = () => {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {goals.map((g) => {
-                    const pct = g.target > 0 ? Math.min((g.current / g.target) * 100, 100) : 0;
-                    const done = g.current >= g.target;
+                    const gId = g._id || g.id;
+                    const pct = g.target > 0 ? Math.min(((g.current || 0) / g.target) * 100, 100) : 0;
+                    const done = (g.current || 0) >= g.target;
                     return (
-                      <div key={g.id} style={{
+                      <div key={gId} style={{
                         padding: '14px', borderRadius: '10px',
                         background: done ? 'rgba(20, 184, 166, 0.04)' : 'var(--bg-tertiary)',
                         border: `1px solid ${done ? 'rgba(20, 184, 166, 0.15)' : 'var(--border-subtle)'}`,
                       }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: '500', marginBottom: '10px', color: 'var(--text-primary)' }}>
                           <span style={{ textDecoration: done ? 'line-through' : 'none' }}>{g.title}</span>
-                          <span style={{ color: done ? '#14B8A6' : 'var(--accent)' }}>{g.current}/{g.target}</span>
+                          <span style={{ color: done ? '#14B8A6' : 'var(--accent)' }}>{g.current || 0}/{g.target}</span>
                         </div>
                         <div style={{ height: '4px', borderRadius: '2px', background: 'var(--bg-primary)', overflow: 'hidden', marginBottom: '8px' }}>
                           <div style={{ width: `${pct}%`, height: '100%', borderRadius: '2px', background: done ? '#14B8A6' : 'var(--accent)', transition: 'width 0.3s' }} />
@@ -272,18 +363,18 @@ const Challenges = () => {
                         <div style={{ display: 'flex', gap: '6px' }}>
                           {!done && (
                             <button
-                              onClick={() => updateGoal(g.id)}
-                          style={{
-                            padding: '4px 10px', borderRadius: '4px', border: 'none',
-                            background: 'rgba(20, 184, 166, 0.1)', color: '#14B8A6',
-                            fontSize: '11px', fontWeight: '600', cursor: 'pointer',
-                          }}
+                              onClick={() => updateGoalProgress(gId)}
+                              style={{
+                                padding: '4px 10px', borderRadius: '4px', border: 'none',
+                                background: 'rgba(20, 184, 166, 0.1)', color: '#14B8A6',
+                                fontSize: '11px', fontWeight: '600', cursor: 'pointer',
+                              }}
                             >
                               +1
                             </button>
                           )}
                           <button
-                            onClick={() => deleteGoal(g.id)}
+                            onClick={() => deleteGoal(gId)}
                             style={{
                               padding: '4px 8px', borderRadius: '4px', border: 'none',
                               background: 'transparent', color: 'var(--text-muted)',
