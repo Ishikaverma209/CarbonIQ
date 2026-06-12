@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { FiArrowRight, FiBox, FiClock, FiAward, FiTarget, FiTrendingUp, FiZap } from 'react-icons/fi';
 
@@ -36,6 +36,7 @@ const BADGES = [
 
 const Dashboard = () => {
   const { user } = useAuth();
+  const location = useLocation();
   const [stats, setStats] = useState(null);
   const [activities, setActivities] = useState([]);
   const [challenges, setChallenges] = useState([]);
@@ -82,7 +83,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchData();
-  }, [user]);
+  }, [user, location.pathname]);
 
   if (loading) {
     return (
@@ -165,14 +166,14 @@ const Dashboard = () => {
           position: 'absolute',
           top: 0,
           right: 0,
-          opacity: 0.08,
+          opacity: 0.15,
           pointerEvents: 'none',
         }}>
           {Array.from({ length: 8 }, (_, i) => (
             <motion.div
               key={i}
               initial={{ opacity: 0 }}
-              animate={{ opacity: 0.12 - i * 0.01 }}
+              animate={{ opacity: 0.2 - i * 0.015 }}
               transition={{ delay: i * 0.1, duration: 0.4 }}
               style={{
                 position: 'absolute',
@@ -181,7 +182,7 @@ const Dashboard = () => {
                 transform: `rotate(${-25 + i * 6}deg)`,
               }}
             >
-              <FootprintIcon size={14 + i * 1.5} color="#14B8A6" />
+              <FootprintIcon size={16 + i * 1.5} color="#14B8A6" />
             </motion.div>
           ))}
         </div>

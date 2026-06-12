@@ -32,8 +32,8 @@ const Landing = () => {
     x: 42 + Math.sin(i * 0.8) * 12,
     y: 15 + i * 5.5,
     rotation: -20 + Math.sin(i * 0.6) * 14,
-    size: 10 + (14 - i) * 1.2,
-    opacity: 0.02 + (i / 14) * 0.06,
+    size: 14 + (14 - i) * 1.5,
+    opacity: 0.12 + (i / 14) * 0.18,
     delay: 0.5 + i * 0.08,
     isLeft: i % 2 === 0,
   }));
@@ -93,7 +93,7 @@ const Landing = () => {
             <defs>
               <linearGradient id="heroTrailGrad" x1="0" y1="1" x2="0" y2="0">
                 <stop offset="0%" stopColor="#14B8A6" stopOpacity="0" />
-                <stop offset="50%" stopColor="#14B8A6" stopOpacity="0.06" />
+                <stop offset="50%" stopColor="#14B8A6" stopOpacity="0.18" />
                 <stop offset="100%" stopColor="#14B8A6" stopOpacity="0" />
               </linearGradient>
             </defs>
@@ -282,7 +282,7 @@ const Landing = () => {
               <motion.div
                 key={i}
                 initial={{ opacity: 0 }}
-                whileInView={{ opacity: 0.03 + (i / 10) * 0.04 }}
+                whileInView={{ opacity: 0.15 + (i / 10) * 0.15 }}
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.1, duration: 0.5 }}
                 style={{
@@ -292,7 +292,7 @@ const Landing = () => {
                   transform: `rotate(${-12 + Math.sin(i * 0.5) * 10}deg)`,
                 }}
               >
-                <FootprintIcon size={12 + (10 - i) * 1.5} color="#14B8A6" />
+                <FootprintIcon size={16 + (10 - i) * 1.5} color="#14B8A6" />
               </motion.div>
             ))}
           </div>
@@ -429,7 +429,7 @@ const Landing = () => {
                   transform: 'translateY(-50%)', display: 'flex', gap: '4px',
                 }}>
                   {[0, 1, 2].map((j) => (
-                    <FootprintIcon key={j} size={6} color="#14B8A6" opacity={0.15 - j * 0.04} />
+                    <FootprintIcon key={j} size={7} color="#14B8A6" opacity={0.35 - j * 0.08} />
                   ))}
                 </div>
               )}
@@ -505,7 +505,7 @@ const Landing = () => {
               <motion.div
                 key={i}
                 initial={{ opacity: 0 }}
-                whileInView={{ opacity: 0.04 + i * 0.005 }}
+                whileInView={{ opacity: 0.15 + i * 0.02 }}
                 viewport={{ once: true }}
                 transition={{ delay: 0.3 + i * 0.1 }}
                 style={{
@@ -515,7 +515,7 @@ const Landing = () => {
                   transform: `rotate(${-25 + i * 8}deg)`,
                 }}
               >
-                <FootprintIcon size={8 + i * 2} color="#14B8A6" />
+                <FootprintIcon size={10 + i * 2} color="#14B8A6" />
               </motion.div>
             ))}
           </div>
